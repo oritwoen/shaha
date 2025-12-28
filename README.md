@@ -102,6 +102,54 @@ Parquet files can be queried with DuckDB, Polars, Spark, or Cloudflare R2 SQL.
 - **Forensics** - identify known passwords
 - **Blockchain analysis** - Bitcoin/Ethereum address research
 
+## Configuration
+
+Configuration is loaded from (in order of priority):
+1. CLI flags
+2. Environment variables
+3. `.shaha.toml` in current directory
+4. `~/.config/shaha/config.toml`
+
+### Example config file
+
+```toml
+[storage.r2]
+endpoint = "https://account-id.r2.cloudflarestorage.com"
+bucket = "my-bucket"
+access_key_id = "your-access-key"
+secret_access_key = "your-secret-key"
+region = "auto"
+path = "hashes.parquet"
+
+[defaults]
+algorithms = ["sha256", "md5"]
+output = "hashes.parquet"
+```
+
+### R2/S3 Storage
+
+Build and query directly from Cloudflare R2 or S3-compatible storage:
+
+```bash
+# Build to R2
+shaha build words.txt --r2
+
+# Query from R2
+shaha query 5e8848 --r2
+```
+
+Environment variables:
+- `SHAHA_R2_ENDPOINT` - S3/R2 endpoint URL
+- `SHAHA_R2_BUCKET` - Bucket name
+- `SHAHA_R2_ACCESS_KEY_ID` or `AWS_ACCESS_KEY_ID`
+- `SHAHA_R2_SECRET_ACCESS_KEY` or `AWS_SECRET_ACCESS_KEY`
+- `SHAHA_R2_PATH` - Path within bucket
+- `SHAHA_R2_REGION` - Region (default: "auto")
+
+## Roadmap
+
+- [ ] [R2 Data Catalog](https://developers.cloudflare.com/r2/data-catalog/) - Apache Iceberg integration for faster queries
+
 ## License
 
 MIT
