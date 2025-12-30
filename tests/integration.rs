@@ -2,7 +2,7 @@ use std::fs;
 use std::io::Write;
 
 use shaha::hasher;
-use shaha::source::{FileSource, Source};
+use shaha::source::{FileSource, Source, UrlSource};
 use shaha::storage::{HashRecord, ParquetStorage, Storage};
 
 #[test]
@@ -478,4 +478,156 @@ fn test_write_empty_batch() {
     storage.finish().unwrap();
 
     assert!(!db_path.exists());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_url_source_content_hash_deterministic() {
+    use wiremock::matchers::method;
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    let mock_server = MockServer::start().await;
+
+    Mock::given(method("GET"))
+        .respond_with(ResponseTemplate::new(200).set_body_string("hello\nworld\ntest\n"))
+        .expect(2)
+        .mount(&mock_server)
+        .await;
+
+    let uri = mock_server.uri();
+    let (source1, source2) = tokio::task::spawn_blocking(move || {
+        let s1 = UrlSource::new(&uri).unwrap();
+        let s2 = UrlSource::new(&uri).unwrap();
+        (s1, s2)
+    })
+    .await
+    .unwrap();
+
+    let hash1 = source1.content_hash().unwrap().unwrap();
+    let hash2 = source2.content_hash().unwrap().unwrap();
+
+    assert_eq!(hash1, hash2);
+    assert_eq!(hash1.len(), 64);
+}
+
+#[test]
+fn test_url_source_fetch_error_connection_refused() {
+    let result = UrlSource::new("http://127.0.0.1:1/words.txt");
+    assert!(result.is_err());
+
+    let err = result.err().unwrap();
+    assert!(err.to_string().contains("Failed to fetch URL"));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_url_source_http_500_succeeds() {
+    use wiremock::matchers::method;
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    let mock_server = MockServer::start().await;
+
+    Mock::given(method("GET"))
+        .respond_with(ResponseTemplate::new(500))
+        .mount(&mock_server)
+        .await;
+
+    let uri = mock_server.uri();
+    let source = tokio::task::spawn_blocking(move || UrlSource::new(&uri))
+        .await
+        .unwrap();
+
+    assert!(source.is_ok());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_url_source_empty_response() {
+    use wiremock::matchers::method;
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    let mock_server = MockServer::start().await;
+
+    Mock::given(method("GET"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(""))
+        .mount(&mock_server)
+        .await;
+
+    let uri = mock_server.uri();
+    let source = tokio::task::spawn_blocking(move || UrlSource::new(&uri))
+        .await
+        .unwrap()
+        .unwrap();
+
+    let words: Vec<String> = source.words().unwrap().collect();
+    assert!(words.is_empty());
+
+    let hash = source.content_hash().unwrap().unwrap();
+    assert_eq!(hash.len(), 64);
+
+    let expected_empty_hash = blake3::hash(b"").to_hex().to_string();
+    assert_eq!(hash, expected_empty_hash);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_url_source_words_parsing() {
+    use wiremock::matchers::method;
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    let mock_server = MockServer::start().await;
+
+    Mock::given(method("GET"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_string("hello\n\nworld\n\n\ntest\n"),
+        )
+        .mount(&mock_server)
+        .await;
+
+    let uri = mock_server.uri();
+    let source = tokio::task::spawn_blocking(move || UrlSource::new(&uri))
+        .await
+        .unwrap()
+        .unwrap();
+
+    let words: Vec<String> = source.words().unwrap().collect();
+
+    assert_eq!(words, vec!["hello", "world", "test"]);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_url_source_name_extraction() {
+    use wiremock::matchers::method;
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    let mock_server = MockServer::start().await;
+
+    Mock::given(method("GET"))
+        .respond_with(ResponseTemplate::new(200).set_body_string("test"))
+        .expect(4)
+        .mount(&mock_server)
+        .await;
+
+    let uri = mock_server.uri();
+
+    let url_with_file = format!("{}/words.txt", uri);
+    let url_with_path = format!("{}/path/to/rockyou.txt", uri);
+    let url_no_extension = format!("{}/wordlist", uri);
+    let base_uri = uri.clone();
+
+    let (name1, name2, name3, name4) = tokio::task::spawn_blocking(move || {
+        let s1 = UrlSource::new(&url_with_file).unwrap();
+        let s2 = UrlSource::new(&url_with_path).unwrap();
+        let s3 = UrlSource::new(&url_no_extension).unwrap();
+        let s4 = UrlSource::new(&base_uri).unwrap();
+        (
+            s1.name().to_string(),
+            s2.name().to_string(),
+            s3.name().to_string(),
+            s4.name().to_string(),
+        )
+    })
+    .await
+    .unwrap();
+
+    assert_eq!(name1, "words");
+    assert_eq!(name2, "rockyou");
+    assert_eq!(name3, "wordlist");
+    assert!(!name4.is_empty());
 }

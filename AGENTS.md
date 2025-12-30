@@ -1,7 +1,8 @@
 # PROJECT KNOWLEDGE BASE
 
-**Generated:** 2025-12-28
-**Branch:** main (uncommitted)
+**Generated:** 2025-12-30
+**Commit:** 542d89b
+**Branch:** main
 
 ## OVERVIEW
 
@@ -19,9 +20,8 @@ shaha/
 │   ├── config.rs      # TOML config loader (.shaha.toml, XDG)
 │   ├── lib.rs         # Public API exports
 │   └── main.rs        # CLI entry point
-├── tests/
-│   └── integration.rs # All tests (unit + integration)
-└── docs/plans/        # Design documents
+└── tests/
+    └── integration.rs # All tests (unit + integration)
 ```
 
 ## WHERE TO LOOK
@@ -53,7 +53,7 @@ trait Source {
 trait Storage {
     fn write_batch(&mut self, records: Vec<HashRecord>) -> Result<()>;
     fn finish(&mut self) -> Result<()>;
-    fn query(&self, hash_prefix: &[u8], algo: Option<&str>) -> Result<Vec<HashRecord>>;
+    fn query(&self, hash_prefix: &[u8], algo: Option<&str>, limit: Option<usize>) -> Result<Vec<HashRecord>>;
     fn stats(&self) -> Result<Stats>;
 }
 ```
