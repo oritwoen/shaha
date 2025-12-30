@@ -81,10 +81,10 @@ pub fn get_hasher(name: &str) -> Option<Box<dyn Hasher>> {
         "sha256" => Some(Box::new(Sha256Hasher)),
         "sha512" => Some(Box::new(Sha512Hasher)),
         "hash160" => Some(Box::new(Hash160Hasher)),
-        "hash256" | "dsha256" => Some(Box::new(Hash256Hasher)),
-        "keccak256" | "keccak-256" => Some(Box::new(Keccak256Hasher)),
+        "hash256" => Some(Box::new(Hash256Hasher)),
+        "keccak256" => Some(Box::new(Keccak256Hasher)),
         "blake3" => Some(Box::new(Blake3Hasher)),
-        "ripemd160" | "ripemd-160" => Some(Box::new(Ripemd160Hasher)),
+        "ripemd160" => Some(Box::new(Ripemd160Hasher)),
         _ => None,
     }
 }
@@ -101,4 +101,8 @@ pub fn available_algorithms() -> &'static [&'static str] {
         "blake3",
         "ripemd160",
     ]
+}
+
+pub fn algo_value_parser() -> clap::builder::PossibleValuesParser {
+    clap::builder::PossibleValuesParser::new(available_algorithms())
 }

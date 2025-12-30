@@ -23,7 +23,7 @@ pub struct BuildArgs {
     pub from: Option<String>,
 
     /// Hash algorithms to use
-    #[arg(short, long, default_value = "sha256")]
+    #[arg(short, long, default_value = "sha256", value_parser = hasher::algo_value_parser())]
     pub algo: Vec<String>,
 
     /// Output file
@@ -77,11 +77,8 @@ pub fn run(args: BuildArgs) -> Result<()> {
     let hashers: Vec<Box<dyn Hasher>> = args
         .algo
         .iter()
-        .map(|name| {
-            hasher::get_hasher(name)
-                .ok_or_else(|| anyhow::anyhow!("Unknown algorithm: {}. Available: {:?}", name, hasher::available_algorithms()))
-        })
-        .collect::<Result<Vec<_>>>()?;
+        .map(|name| hasher::get_hasher(name).expect("algorithm validated by clap"))
+        .collect();
 
     if hashers.is_empty() {
         bail!("No valid algorithms specified");
