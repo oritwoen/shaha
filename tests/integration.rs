@@ -663,3 +663,155 @@ fn test_is_quiet_controls_output() {
     
     shaha::output::set_quiet(false);
 }
+
+#[test]
+fn test_dry_run_shows_stats_without_writing() {
+    let dir = tempfile::tempdir().unwrap();
+    let words_path = dir.path().join("words.txt");
+    let output_path = dir.path().join("output.parquet");
+
+    {
+        let mut file = fs::File::create(&words_path).unwrap();
+        writeln!(file, "hello").unwrap();
+        writeln!(file, "world").unwrap();
+        writeln!(file, "hello").unwrap();
+    }
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_shaha"))
+        .args([
+            "build",
+            words_path.to_str().unwrap(),
+            "-o",
+            output_path.to_str().unwrap(),
+            "-a",
+            "sha256",
+            "-a",
+            "md5",
+            "--dry-run",
+        ])
+        .output()
+        .expect("Failed to run shaha");
+
+    assert!(output.status.success());
+    assert!(
+        !output_path.exists(),
+        "File should not be created in dry-run mode"
+    );
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("[dry-run]"));
+    assert!(stderr.contains("Unique words: 2"));
+    assert!(stderr.contains("Records to generate: 4"));
+    assert!(stderr.contains("sha256"));
+    assert!(stderr.contains("md5"));
+}
+
+#[test]
+fn test_dry_run_shows_append_info() {
+    let dir = tempfile::tempdir().unwrap();
+    let words_path = dir.path().join("words.txt");
+    let db_path = dir.path().join("existing.parquet");
+
+    let sha256 = hasher::get_hasher("sha256").unwrap();
+    let records = vec![HashRecord {
+        hash: sha256.hash(b"existing"),
+        preimage: "existing".to_string(),
+        algorithm: "sha256".to_string(),
+        sources: vec!["old".to_string()],
+    }];
+    let mut storage = ParquetStorage::new(&db_path);
+    storage.write_batch(records).unwrap();
+    storage.finish().unwrap();
+
+    {
+        let mut file = fs::File::create(&words_path).unwrap();
+        writeln!(file, "hello").unwrap();
+    }
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_shaha"))
+        .args([
+            "build",
+            words_path.to_str().unwrap(),
+            "-o",
+            db_path.to_str().unwrap(),
+            "--append",
+            "--dry-run",
+        ])
+        .output()
+        .expect("Failed to run shaha");
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("[dry-run]"));
+    assert!(
+        stderr.contains("Append mode"),
+        "Should show append mode info"
+    );
+}
+
+#[test]
+fn test_dry_run_shows_already_processed() {
+    let dir = tempfile::tempdir().unwrap();
+    let words_path = dir.path().join("words.txt");
+    let db_path = dir.path().join("test.parquet");
+
+    {
+        let mut file = fs::File::create(&words_path).unwrap();
+        writeln!(file, "hello").unwrap();
+    }
+
+    std::process::Command::new(env!("CARGO_BIN_EXE_shaha"))
+        .args([
+            "build",
+            words_path.to_str().unwrap(),
+            "-o",
+            db_path.to_str().unwrap(),
+        ])
+        .output()
+        .expect("Failed to run shaha");
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_shaha"))
+        .args([
+            "build",
+            words_path.to_str().unwrap(),
+            "-o",
+            db_path.to_str().unwrap(),
+            "--dry-run",
+        ])
+        .output()
+        .expect("Failed to run shaha");
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("[dry-run]"));
+    assert!(
+        stderr.contains("already processed"),
+        "Should indicate source was already processed"
+    );
+    assert!(
+        stderr.contains("--force"),
+        "Should mention --force option"
+    );
+}
+
+#[test]
+fn test_dry_run_formats_large_numbers() {
+    let dir = tempfile::tempdir().unwrap();
+    let words_path = dir.path().join("words.txt");
+
+    {
+        let mut file = fs::File::create(&words_path).unwrap();
+        for i in 0..1500 {
+            writeln!(file, "word{}", i).unwrap();
+        }
+    }
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_shaha"))
+        .args(["build", words_path.to_str().unwrap(), "--dry-run"])
+        .output()
+        .expect("Failed to run shaha");
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("1,500"),
+        "Should format numbers with comma separator"
+    );
+}

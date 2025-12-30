@@ -44,6 +44,9 @@ pub struct BuildArgs {
     #[arg(long)]
     pub force: bool,
 
+    #[arg(long)]
+    pub dry_run: bool,
+
     /// Upload to R2/S3 storage instead of local file
     #[arg(long)]
     pub r2: bool,
@@ -102,6 +105,10 @@ pub fn run(args: BuildArgs) -> Result<()> {
     let data_source = source::parse(&source_spec)?;
     let source_name = args.name.clone().unwrap_or_else(|| data_source.name().to_string());
     let source_hash = data_source.content_hash()?;
+
+    if args.dry_run {
+        return run_dry_run(&args, data_source.as_ref(), &hashers, source_hash);
+    }
 
     if !args.force && !args.r2 && args.output.exists() {
         if let Some(ref hash) = source_hash {
@@ -243,6 +250,82 @@ pub fn run(args: BuildArgs) -> Result<()> {
     Ok(())
 }
 
+fn run_dry_run(
+    args: &BuildArgs,
+    source: &dyn crate::source::Source,
+    hashers: &[Box<dyn Hasher>],
+    source_hash: Option<String>,
+) -> Result<()> {
+    eprintln!("[dry-run] Would process: {}", source.name());
+
+    let algo_names: Vec<&str> = hashers.iter().map(|h| h.name()).collect();
+    eprintln!("[dry-run] Algorithms: {}", algo_names.join(", "));
+
+    let mut already_processed = false;
+
+    if !args.r2 && args.output.exists() {
+        if let Some(ref hash) = source_hash {
+            let existing_storage = ParquetStorage::new(&args.output);
+            let existing_hashes = existing_storage.get_source_hashes()?;
+            if existing_hashes.contains(hash) {
+                already_processed = true;
+                eprintln!(
+                    "[dry-run] Source already processed (content hash {}). Would skip unless --force.",
+                    &hash[..12]
+                );
+            }
+        }
+    }
+
+    if args.append && !args.r2 && args.output.exists() {
+        let existing_storage = ParquetStorage::new(&args.output);
+        let stats = existing_storage.stats()?;
+        eprintln!(
+            "[dry-run] Append mode: would merge with {} existing records",
+            format_number(stats.total_records)
+        );
+    }
+
+    let words_iter = source.words()?;
+    let mut seen: HashSet<String> = HashSet::new();
+    let mut total = 0usize;
+
+    for word in words_iter {
+        total += 1;
+        seen.insert(word);
+    }
+
+    let unique = seen.len();
+    let record_count = unique * hashers.len();
+
+    eprintln!("[dry-run] Total words: {}", format_number(total));
+    eprintln!("[dry-run] Unique words: {}", format_number(unique));
+    eprintln!(
+        "[dry-run] Records to generate: {}",
+        format_number(record_count)
+    );
+
+    let output_location = if args.r2 {
+        let r2_config = build_r2_config(args)?;
+        r2_config.s3_url()
+    } else {
+        args.output.display().to_string()
+    };
+
+    eprintln!("[dry-run] Output: {}", output_location);
+
+    if already_processed && !args.force {
+        eprintln!("[dry-run] Result: Would skip (use --force to rebuild)");
+    } else {
+        eprintln!(
+            "[dry-run] Result: Would write {} records",
+            format_number(record_count)
+        );
+    }
+
+    Ok(())
+}
+
 fn build_r2_config(args: &BuildArgs) -> Result<R2Config> {
     let default_path = args.output.file_name()
         .map(|n| n.to_string_lossy().to_string())
@@ -286,4 +369,19 @@ fn process_new_words(
         let key = (record.hash.clone(), record.algorithm.clone());
         records_map.entry(key).or_insert(record);
     }
+}
+
+fn format_number(n: usize) -> String {
+    let s = n.to_string();
+    let bytes = s.as_bytes();
+    let len = bytes.len();
+
+    let mut result = String::with_capacity(len + (len - 1) / 3);
+    for (i, &byte) in bytes.iter().enumerate() {
+        if i > 0 && (len - i).is_multiple_of(3) {
+            result.push(',');
+        }
+        result.push(byte as char);
+    }
+    result
 }
