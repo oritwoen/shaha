@@ -1,6 +1,7 @@
 pub mod cli;
 pub mod config;
 pub mod hasher;
+pub mod output;
 pub mod source;
 pub mod storage;
 
