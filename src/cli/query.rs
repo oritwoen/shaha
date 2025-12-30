@@ -18,7 +18,7 @@ pub struct QueryArgs {
     pub database: PathBuf,
 
     /// Filter by algorithm
-    #[arg(short, long)]
+    #[arg(short, long, value_parser = hasher::algo_value_parser())]
     pub algo: Option<String>,
 
     /// Output format
@@ -68,16 +68,6 @@ pub enum OutputFormat {
 pub fn run(args: QueryArgs) -> Result<()> {
     let hash_bytes = hex::decode(&args.hash)
         .map_err(|_| anyhow::anyhow!("Invalid hex string: {}", args.hash))?;
-
-    if let Some(ref algo) = args.algo {
-        if hasher::get_hasher(algo).is_none() {
-            bail!(
-                "Unknown algorithm: '{}'. Available: {:?}",
-                algo,
-                hasher::available_algorithms()
-            );
-        }
-    }
 
     let results = if args.r2 {
         let r2_config = build_r2_config(&args)?;
