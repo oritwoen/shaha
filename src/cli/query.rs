@@ -88,6 +88,18 @@ pub fn run(args: QueryArgs) -> Result<()> {
         OutputFormat::Table => print_table(&results),
     }
 
+    let count = results.len();
+    let prefix = match args.format {
+        OutputFormat::Json => "",
+        _ => "\n",
+    };
+    crate::status!(
+        "{}Found {} {}",
+        prefix,
+        count,
+        if count == 1 { "result" } else { "results" }
+    );
+
     Ok(())
 }
 
