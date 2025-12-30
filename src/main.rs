@@ -5,6 +5,7 @@ use shaha::cli::{Cli, Commands};
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
+    shaha::output::set_quiet(cli.quiet);
 
     match cli.command {
         Commands::Build(args) => shaha::cli::build::run(args),

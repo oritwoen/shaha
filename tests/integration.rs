@@ -631,3 +631,35 @@ async fn test_url_source_name_extraction() {
     assert_eq!(name3, "wordlist");
     assert!(!name4.is_empty());
 }
+
+#[test]
+fn test_quiet_mode_toggle() {
+    shaha::output::set_quiet(false);
+    assert!(!shaha::output::is_quiet());
+    
+    shaha::output::set_quiet(true);
+    assert!(shaha::output::is_quiet());
+    
+    shaha::output::set_quiet(false);
+    assert!(!shaha::output::is_quiet());
+}
+
+#[test]
+fn test_is_quiet_controls_output() {
+    use std::io::Write;
+    
+    shaha::output::set_quiet(true);
+    let mut buffer = Vec::new();
+    if !shaha::output::is_quiet() {
+        writeln!(buffer, "should not appear").unwrap();
+    }
+    assert!(buffer.is_empty());
+    
+    shaha::output::set_quiet(false);
+    if !shaha::output::is_quiet() {
+        writeln!(buffer, "should appear").unwrap();
+    }
+    assert!(!buffer.is_empty());
+    
+    shaha::output::set_quiet(false);
+}

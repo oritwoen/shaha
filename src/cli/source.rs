@@ -2,6 +2,7 @@ use anyhow::{bail, Result};
 use clap::{Args, Subcommand};
 
 use crate::source::{aspell, seclists};
+use crate::status;
 
 #[derive(Args)]
 pub struct SourceArgs {
@@ -43,7 +44,7 @@ fn pull(provider: &str) -> Result<()> {
         "seclists" => seclists::pull(),
         "aspell" => {
             if aspell::is_available() {
-                eprintln!("aspell is installed and ready.");
+                status!("aspell is installed and ready.");
                 Ok(())
             } else {
                 bail!("aspell is not installed. Install it with your package manager:\n  apt install aspell aspell-en aspell-pl\n  brew install aspell")
@@ -86,7 +87,7 @@ fn path(provider: &str) -> Result<()> {
             Ok(())
         }
         "aspell" => {
-            eprintln!("aspell uses system dictionaries, no local cache path.");
+            status!("aspell uses system dictionaries, no local cache path.");
             Ok(())
         }
         _ => bail!(

@@ -6,6 +6,7 @@ use std::process::Command;
 use anyhow::{bail, Context, Result};
 
 use super::Source;
+use crate::status;
 
 const SECLISTS_REPO: &str = "https://github.com/danielmiessler/SecLists.git";
 
@@ -86,7 +87,7 @@ pub fn pull() -> Result<()> {
     let dir = seclists_dir();
 
     if dir.join(".git").exists() {
-        eprintln!("Updating SecLists...");
+        status!("Updating SecLists...");
         let status = Command::new("git")
             .args(["pull", "--ff-only"])
             .current_dir(&dir)
@@ -96,14 +97,14 @@ pub fn pull() -> Result<()> {
         if !status.success() {
             bail!("git pull failed");
         }
-        eprintln!("SecLists updated.");
+        status!("SecLists updated.");
     } else {
         if let Some(parent) = dir.parent() {
             std::fs::create_dir_all(parent)
                 .with_context(|| format!("Failed to create directory: {:?}", parent))?;
         }
 
-        eprintln!("Cloning SecLists (this may take a while)...");
+        status!("Cloning SecLists (this may take a while)...");
         let status = Command::new("git")
             .args(["clone", "--depth", "1", SECLISTS_REPO, dir.to_str().unwrap()])
             .status()
@@ -112,7 +113,7 @@ pub fn pull() -> Result<()> {
         if !status.success() {
             bail!("git clone failed");
         }
-        eprintln!("SecLists cloned to {:?}", dir);
+        status!("SecLists cloned to {:?}", dir);
     }
 
     Ok(())

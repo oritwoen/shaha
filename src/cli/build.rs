@@ -8,7 +8,9 @@ use rayon::prelude::*;
 
 use crate::config::{Config, R2Overrides};
 use crate::hasher::{self, Hasher};
+use crate::output;
 use crate::source;
+use crate::status;
 use crate::storage::{HashRecord, ParquetStorage, R2Config, R2Storage, Storage};
 
 const BATCH_SIZE: usize = 100_000;
@@ -109,7 +111,7 @@ pub fn run(args: BuildArgs) -> Result<()> {
             let existing_storage = ParquetStorage::new(&args.output);
             let existing_hashes = existing_storage.get_source_hashes()?;
             if existing_hashes.contains(hash) {
-                eprintln!(
+                status!(
                     "Source already processed (content hash {}). Use --force to rebuild.",
                     &hash[..12]
                 );
@@ -118,7 +120,7 @@ pub fn run(args: BuildArgs) -> Result<()> {
         }
     }
 
-    eprintln!("Reading words from {}...", data_source.name());
+    status!("Reading words from {}...", data_source.name());
 
     let words_iter = data_source.words()?;
 
@@ -128,12 +130,17 @@ pub fn run(args: BuildArgs) -> Result<()> {
     let mut seen: HashSet<String> = HashSet::new();
     let mut new_records_map: HashMap<RecordKey, HashRecord> = HashMap::new();
 
-    let pb = ProgressBar::new_spinner();
-    pb.set_style(
-        ProgressStyle::default_spinner()
-            .template("{spinner:.green} [{elapsed_precise}] {msg}")
-            .unwrap(),
-    );
+    let pb = if output::is_quiet() {
+        ProgressBar::hidden()
+    } else {
+        let pb = ProgressBar::new_spinner();
+        pb.set_style(
+            ProgressStyle::default_spinner()
+                .template("{spinner:.green} [{elapsed_precise}] {msg}")
+                .unwrap(),
+        );
+        pb
+    };
 
     for word in words_iter {
         total_words += 1;
@@ -167,7 +174,7 @@ pub fn run(args: BuildArgs) -> Result<()> {
     let mut final_records: Vec<HashRecord> = Vec::new();
 
     if args.append && !args.r2 && args.output.exists() {
-        eprintln!("Streaming existing database for merge...");
+        status!("Streaming existing database for merge...");
         let existing_storage = ParquetStorage::new(&args.output);
         
         existing_storage.for_each_record(|mut record| {
@@ -186,13 +193,13 @@ pub fn run(args: BuildArgs) -> Result<()> {
             Ok(())
         })?;
         
-        eprintln!("Processed {} existing records, {} sources merged", existing_count, merged_count);
+        status!("Processed {} existing records, {} sources merged", existing_count, merged_count);
     }
 
     let new_records = new_records_map.len();
     final_records.extend(new_records_map.into_values());
 
-    eprintln!("Sorting and writing {} total records...", final_records.len());
+    status!("Sorting and writing {} total records...", final_records.len());
 
     final_records.sort_by(|a, b| a.hash.cmp(&b.hash));
 
@@ -202,7 +209,7 @@ pub fn run(args: BuildArgs) -> Result<()> {
         let r2_config = build_r2_config(&args)?;
         output_location = r2_config.s3_url();
         
-        eprintln!("Uploading to {}...", output_location);
+        status!("Uploading to {}...", output_location);
         let mut storage = R2Storage::new(r2_config)?;
         for chunk in final_records.chunks(BATCH_SIZE) {
             storage.write_batch(chunk.to_vec())?;
@@ -221,20 +228,20 @@ pub fn run(args: BuildArgs) -> Result<()> {
     }
 
     let duplicates = total_words - unique_words;
-    eprintln!(
+    status!(
         "Processed {} words ({} unique, {} duplicates skipped)",
         total_words, unique_words, duplicates
     );
     if args.append && existing_count > 0 {
-        eprintln!(
+        status!(
             "Records: {} existing + {} new ({} sources merged) = {} total",
             existing_count, new_records, merged_count, 
             final_records.len()
         );
     } else {
-        eprintln!("Generated {} hash records", final_records.len());
+        status!("Generated {} hash records", final_records.len());
     }
-    eprintln!("Wrote to {}", output_location);
+    status!("Wrote to {}", output_location);
 
     Ok(())
 }

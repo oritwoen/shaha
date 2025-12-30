@@ -10,6 +10,10 @@ use clap::{Parser, Subcommand};
 #[command(about = "Hash database builder and reverse lookup tool (SHA + aha!)")]
 #[command(version)]
 pub struct Cli {
+    /// Suppress progress output (errors still shown)
+    #[arg(short, long, global = true)]
+    pub quiet: bool,
+
     #[command(subcommand)]
     pub command: Commands,
 }
