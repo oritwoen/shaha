@@ -815,3 +815,233 @@ fn test_dry_run_formats_large_numbers() {
         "Should format numbers with comma separator"
     );
 }
+
+#[test]
+fn test_query_shows_result_count_on_stderr() {
+    let dir = tempfile::tempdir().unwrap();
+    let words_path = dir.path().join("words.txt");
+    let db_path = dir.path().join("test.parquet");
+
+    {
+        let mut file = fs::File::create(&words_path).unwrap();
+        writeln!(file, "hello").unwrap();
+        writeln!(file, "world").unwrap();
+    }
+
+    std::process::Command::new(env!("CARGO_BIN_EXE_shaha"))
+        .args([
+            "build",
+            words_path.to_str().unwrap(),
+            "-o",
+            db_path.to_str().unwrap(),
+        ])
+        .output()
+        .expect("Failed to build database");
+
+    let sha256 = hasher::get_hasher("sha256").unwrap();
+    let hash = sha256.hash(b"hello");
+    let hash_hex = hex::encode(&hash);
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_shaha"))
+        .args(["query", &hash_hex, "-d", db_path.to_str().unwrap()])
+        .output()
+        .expect("Failed to run query");
+
+    assert!(output.status.success());
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("Found 1 result"),
+        "Should show result count on stderr, got: {}",
+        stderr
+    );
+}
+
+#[test]
+fn test_query_result_count_plural() {
+    let dir = tempfile::tempdir().unwrap();
+    let db_path = dir.path().join("test.parquet");
+
+    let sha256 = hasher::get_hasher("sha256").unwrap();
+    let md5 = hasher::get_hasher("md5").unwrap();
+
+    let records = vec![
+        HashRecord {
+            hash: sha256.hash(b"hello"),
+            preimage: "hello".to_string(),
+            algorithm: "sha256".to_string(),
+            sources: vec!["test".to_string()],
+        },
+        HashRecord {
+            hash: md5.hash(b"hello"),
+            preimage: "hello".to_string(),
+            algorithm: "md5".to_string(),
+            sources: vec!["test".to_string()],
+        },
+    ];
+
+    let mut storage = ParquetStorage::new(&db_path);
+    storage.write_batch(records).unwrap();
+    storage.finish().unwrap();
+
+    let sha256_hash = hex::encode(sha256.hash(b"hello"));
+    let md5_hash = hex::encode(md5.hash(b"hello"));
+    let common_prefix = common_hex_prefix(&sha256_hash, &md5_hash);
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_shaha"))
+        .args(["query", &common_prefix, "-d", db_path.to_str().unwrap()])
+        .output()
+        .expect("Failed to run query");
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    if output.status.success() {
+        assert!(
+            stderr.contains("results"),
+            "Should use plural 'results' for multiple matches, got: {}",
+            stderr
+        );
+        assert!(
+            !stderr.contains("1 result"),
+            "Should not say '1 result' for multiple matches"
+        );
+    }
+}
+
+fn common_hex_prefix(a: &str, b: &str) -> String {
+    a.chars()
+        .zip(b.chars())
+        .take_while(|(x, y)| x == y)
+        .map(|(x, _)| x)
+        .collect()
+}
+
+#[test]
+fn test_query_json_format_no_blank_line_before_summary() {
+    let dir = tempfile::tempdir().unwrap();
+    let words_path = dir.path().join("words.txt");
+    let db_path = dir.path().join("test.parquet");
+
+    {
+        let mut file = fs::File::create(&words_path).unwrap();
+        writeln!(file, "hello").unwrap();
+    }
+
+    std::process::Command::new(env!("CARGO_BIN_EXE_shaha"))
+        .args([
+            "build",
+            words_path.to_str().unwrap(),
+            "-o",
+            db_path.to_str().unwrap(),
+        ])
+        .output()
+        .expect("Failed to build database");
+
+    let sha256 = hasher::get_hasher("sha256").unwrap();
+    let hash_hex = hex::encode(sha256.hash(b"hello"));
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_shaha"))
+        .args([
+            "query",
+            &hash_hex,
+            "-d",
+            db_path.to_str().unwrap(),
+            "--format",
+            "json",
+        ])
+        .output()
+        .expect("Failed to run query");
+
+    assert!(output.status.success());
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.starts_with("Found"),
+        "JSON format should not have blank line before summary, got: '{}'",
+        stderr
+    );
+}
+
+#[test]
+fn test_query_plain_format_has_blank_line_before_summary() {
+    let dir = tempfile::tempdir().unwrap();
+    let words_path = dir.path().join("words.txt");
+    let db_path = dir.path().join("test.parquet");
+
+    {
+        let mut file = fs::File::create(&words_path).unwrap();
+        writeln!(file, "hello").unwrap();
+    }
+
+    std::process::Command::new(env!("CARGO_BIN_EXE_shaha"))
+        .args([
+            "build",
+            words_path.to_str().unwrap(),
+            "-o",
+            db_path.to_str().unwrap(),
+        ])
+        .output()
+        .expect("Failed to build database");
+
+    let sha256 = hasher::get_hasher("sha256").unwrap();
+    let hash_hex = hex::encode(sha256.hash(b"hello"));
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_shaha"))
+        .args(["query", &hash_hex, "-d", db_path.to_str().unwrap()])
+        .output()
+        .expect("Failed to run query");
+
+    assert!(output.status.success());
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.starts_with("\n") || stderr.starts_with("\r\n"),
+        "Plain format should have blank line before summary, got: '{}'",
+        stderr
+    );
+}
+
+#[test]
+fn test_query_quiet_suppresses_summary() {
+    let dir = tempfile::tempdir().unwrap();
+    let words_path = dir.path().join("words.txt");
+    let db_path = dir.path().join("test.parquet");
+
+    {
+        let mut file = fs::File::create(&words_path).unwrap();
+        writeln!(file, "hello").unwrap();
+    }
+
+    std::process::Command::new(env!("CARGO_BIN_EXE_shaha"))
+        .args([
+            "build",
+            words_path.to_str().unwrap(),
+            "-o",
+            db_path.to_str().unwrap(),
+        ])
+        .output()
+        .expect("Failed to build database");
+
+    let sha256 = hasher::get_hasher("sha256").unwrap();
+    let hash_hex = hex::encode(sha256.hash(b"hello"));
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_shaha"))
+        .args([
+            "--quiet",
+            "query",
+            &hash_hex,
+            "-d",
+            db_path.to_str().unwrap(),
+        ])
+        .output()
+        .expect("Failed to run query");
+
+    assert!(output.status.success());
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.is_empty(),
+        "Quiet mode should suppress summary, got: '{}'",
+        stderr
+    );
+}
