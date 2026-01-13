@@ -1,4 +1,8 @@
 # shaha
+
+[![Crates.io](https://img.shields.io/crates/v/shaha?style=flat&colorA=130f40&colorB=474787)](https://crates.io/crates/shaha)
+[![Downloads](https://img.shields.io/crates/d/shaha?style=flat&colorA=130f40&colorB=474787)](https://crates.io/crates/shaha)
+[![License](https://img.shields.io/crates/l/shaha?style=flat&colorA=130f40&colorB=474787)](LICENSE)
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/oritwoen/shaha)
 
 Hash database builder and reverse lookup tool. *SHA + aha!*
