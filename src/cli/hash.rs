@@ -1,6 +1,6 @@
 use std::io::{self, BufRead, IsTerminal};
 
-use anyhow::{bail, Result};
+use anyhow::{anyhow, bail, Result};
 use clap::{Args, ValueEnum};
 
 use crate::hasher;
@@ -29,8 +29,11 @@ pub fn run(args: HashArgs) -> Result<()> {
     let hashers: Vec<Box<dyn hasher::Hasher>> = args
         .algo
         .iter()
-        .map(|name| hasher::get_hasher(name).expect("algorithm validated by clap"))
-        .collect();
+        .map(|name| {
+            hasher::get_hasher(name)
+                .ok_or_else(|| anyhow!("Unsupported algorithm: {name}"))
+        })
+        .collect::<Result<Vec<_>>>()?;
 
     let inputs = collect_inputs(&args)?;
 
@@ -58,7 +61,8 @@ fn collect_inputs(args: &HashArgs) -> Result<Vec<String>> {
     let reader = io::stdin().lock();
     let lines: Vec<String> = reader
         .lines()
-        .map_while(Result::ok)
+        .collect::<std::result::Result<Vec<_>, _>>()?
+        .into_iter()
         .filter(|line| !line.is_empty())
         .collect();
 
