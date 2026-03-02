@@ -1,4 +1,5 @@
 pub mod build;
+pub mod hash;
 pub mod info;
 pub mod query;
 pub mod source;
@@ -22,6 +23,8 @@ pub struct Cli {
 pub enum Commands {
     /// Build hash database from input file
     Build(build::BuildArgs),
+    /// Compute hash of input text
+    Hash(hash::HashArgs),
     /// Query hash database for preimage
     Query(query::QueryArgs),
     /// Show database statistics
