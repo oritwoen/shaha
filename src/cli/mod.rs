@@ -87,6 +87,6 @@ impl R2Args {
             default_path: &default_path,
         };
 
-        Config::load().unwrap_or_default().build_r2_config(overrides)
+        Config::load()?.build_r2_config(overrides)
     }
 }
