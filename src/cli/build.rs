@@ -6,12 +6,11 @@ use clap::Args;
 use indicatif::{ProgressBar, ProgressStyle};
 use rayon::prelude::*;
 
-use crate::config::{Config, R2Overrides};
 use crate::hasher::{self, Hasher};
 use crate::output;
 use crate::source;
 use crate::status;
-use crate::storage::{HashRecord, ParquetStorage, R2Config, R2Storage, Storage};
+use crate::storage::{HashRecord, ParquetStorage, R2Storage, Storage};
 
 const BATCH_SIZE: usize = 100_000;
 
@@ -47,33 +46,8 @@ pub struct BuildArgs {
     #[arg(long)]
     pub dry_run: bool,
 
-    /// Upload to R2/S3 storage instead of local file
-    #[arg(long)]
-    pub r2: bool,
-
-    /// R2/S3 endpoint URL (or SHAHA_R2_ENDPOINT env var)
-    #[arg(long, env = "SHAHA_R2_ENDPOINT")]
-    pub endpoint: Option<String>,
-
-    /// R2/S3 bucket name (or SHAHA_R2_BUCKET env var)
-    #[arg(long, env = "SHAHA_R2_BUCKET")]
-    pub bucket: Option<String>,
-
-    /// R2/S3 access key ID (or SHAHA_R2_ACCESS_KEY_ID or AWS_ACCESS_KEY_ID env var)
-    #[arg(long, env = "SHAHA_R2_ACCESS_KEY_ID")]
-    pub access_key_id: Option<String>,
-
-    /// R2/S3 secret access key (or SHAHA_R2_SECRET_ACCESS_KEY or AWS_SECRET_ACCESS_KEY env var)
-    #[arg(long, env = "SHAHA_R2_SECRET_ACCESS_KEY")]
-    pub secret_access_key: Option<String>,
-
-    /// Path within bucket (defaults to output filename)
-    #[arg(long, env = "SHAHA_R2_PATH")]
-    pub r2_path: Option<String>,
-
-    /// R2/S3 region (default: "auto" for R2)
-    #[arg(long, env = "SHAHA_R2_REGION", default_value = "auto")]
-    pub region: String,
+    #[command(flatten)]
+    pub r2: super::R2Args,
 }
 
 type RecordKey = (Vec<u8>, String);
@@ -110,7 +84,7 @@ pub fn run(args: BuildArgs) -> Result<()> {
         return run_dry_run(&args, data_source.as_ref(), &hashers, source_hash);
     }
 
-    if !args.force && !args.r2 && args.output.exists() {
+    if !args.force && !args.r2.enabled && args.output.exists() {
         if let Some(ref hash) = source_hash {
             let existing_storage = ParquetStorage::new(&args.output);
             let existing_hashes = existing_storage.get_source_hashes()?;
@@ -177,7 +151,7 @@ pub fn run(args: BuildArgs) -> Result<()> {
     let mut merged_count = 0usize;
     let mut final_records: Vec<HashRecord> = Vec::new();
 
-    if args.append && !args.r2 && args.output.exists() {
+    if args.append && !args.r2.enabled && args.output.exists() {
         status!("Streaming existing database for merge...");
         let existing_storage = ParquetStorage::new(&args.output);
         
@@ -209,8 +183,8 @@ pub fn run(args: BuildArgs) -> Result<()> {
 
     let output_location: String;
     
-    if args.r2 {
-        let r2_config = build_r2_config(&args)?;
+    if args.r2.enabled {
+        let r2_config = args.r2.build_config(&args.output)?;
         output_location = r2_config.s3_url();
         
         status!("Uploading to {}...", output_location);
@@ -263,7 +237,7 @@ fn run_dry_run(
 
     let mut already_processed = false;
 
-    if !args.r2 && args.output.exists() {
+    if !args.r2.enabled && args.output.exists() {
         if let Some(ref hash) = source_hash {
             let existing_storage = ParquetStorage::new(&args.output);
             let existing_hashes = existing_storage.get_source_hashes()?;
@@ -277,7 +251,7 @@ fn run_dry_run(
         }
     }
 
-    if args.append && !args.r2 && args.output.exists() {
+    if args.append && !args.r2.enabled && args.output.exists() {
         let existing_storage = ParquetStorage::new(&args.output);
         let stats = existing_storage.stats()?;
         eprintln!(
@@ -305,8 +279,8 @@ fn run_dry_run(
         format_number(record_count)
     );
 
-    let output_location = if args.r2 {
-        let r2_config = build_r2_config(args)?;
+    let output_location = if args.r2.enabled {
+        let r2_config = args.r2.build_config(&args.output)?;
         r2_config.s3_url()
     } else {
         args.output.display().to_string()
@@ -326,23 +300,6 @@ fn run_dry_run(
     Ok(())
 }
 
-fn build_r2_config(args: &BuildArgs) -> Result<R2Config> {
-    let default_path = args.output.file_name()
-        .map(|n| n.to_string_lossy().to_string())
-        .unwrap_or_else(|| "hashes.parquet".to_string());
-
-    let overrides = R2Overrides {
-        endpoint: args.endpoint.as_deref(),
-        bucket: args.bucket.as_deref(),
-        access_key_id: args.access_key_id.as_deref(),
-        secret_access_key: args.secret_access_key.as_deref(),
-        path: args.r2_path.as_deref(),
-        region: &args.region,
-        default_path: &default_path,
-    };
-
-    Config::load().unwrap_or_default().build_r2_config(overrides)
-}
 
 fn process_new_words(
     words: &[String],

@@ -3,8 +3,7 @@ use std::path::PathBuf;
 use anyhow::Result;
 use clap::{Args, ValueEnum};
 
-use crate::config::{Config, R2Overrides};
-use crate::storage::{ParquetStorage, R2Config, R2Storage, Storage};
+use crate::storage::{ParquetStorage, R2Storage, Storage};
 
 #[derive(Clone, ValueEnum)]
 pub enum OutputFormat {
@@ -19,32 +18,13 @@ pub struct InfoArgs {
 
     #[arg(short, long, default_value = "plain")]
     pub format: OutputFormat,
-
-    #[arg(long)]
-    pub r2: bool,
-
-    #[arg(long, env = "SHAHA_R2_ENDPOINT")]
-    pub endpoint: Option<String>,
-
-    #[arg(long, env = "SHAHA_R2_BUCKET")]
-    pub bucket: Option<String>,
-
-    #[arg(long, env = "SHAHA_R2_ACCESS_KEY_ID")]
-    pub access_key_id: Option<String>,
-
-    #[arg(long, env = "SHAHA_R2_SECRET_ACCESS_KEY")]
-    pub secret_access_key: Option<String>,
-
-    #[arg(long, env = "SHAHA_R2_PATH")]
-    pub r2_path: Option<String>,
-
-    #[arg(long, env = "SHAHA_R2_REGION", default_value = "auto")]
-    pub region: String,
+    #[command(flatten)]
+    pub r2: super::R2Args,
 }
 
 pub fn run(args: InfoArgs) -> Result<()> {
-    let (stats, location) = if args.r2 {
-        let r2_config = build_r2_config(&args)?;
+    let (stats, location) = if args.r2.enabled {
+        let r2_config = args.r2.build_config(&args.database)?;
         let url = r2_config.s3_url();
         let storage = R2Storage::new(r2_config)?;
         (storage.stats()?, url)
@@ -112,23 +92,6 @@ fn print_json(location: &str, stats: &crate::storage::Stats) -> Result<()> {
     Ok(())
 }
 
-fn build_r2_config(args: &InfoArgs) -> Result<R2Config> {
-    let default_path = args.database.file_name()
-        .map(|n| n.to_string_lossy().to_string())
-        .unwrap_or_else(|| "hashes.parquet".to_string());
-
-    let overrides = R2Overrides {
-        endpoint: args.endpoint.as_deref(),
-        bucket: args.bucket.as_deref(),
-        access_key_id: args.access_key_id.as_deref(),
-        secret_access_key: args.secret_access_key.as_deref(),
-        path: args.r2_path.as_deref(),
-        region: &args.region,
-        default_path: &default_path,
-    };
-
-    Config::load().unwrap_or_default().build_r2_config(overrides)
-}
 
 fn format_bytes(bytes: u64) -> String {
     const KB: u64 = 1024;

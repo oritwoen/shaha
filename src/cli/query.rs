@@ -4,9 +4,8 @@ use anyhow::{bail, Result};
 use clap::{Args, ValueEnum};
 use comfy_table::{presets::UTF8_FULL, Table};
 
-use crate::config::{Config, R2Overrides};
 use crate::hasher;
-use crate::storage::{HashRecord, ParquetStorage, R2Config, R2Storage, Storage};
+use crate::storage::{HashRecord, ParquetStorage, R2Storage, Storage};
 
 #[derive(Args)]
 pub struct QueryArgs {
@@ -25,33 +24,8 @@ pub struct QueryArgs {
     #[arg(short, long, default_value = "plain")]
     pub format: OutputFormat,
 
-    /// Query from R2/S3 storage instead of local file
-    #[arg(long)]
-    pub r2: bool,
-
-    /// R2/S3 endpoint URL (or SHAHA_R2_ENDPOINT env var)
-    #[arg(long, env = "SHAHA_R2_ENDPOINT")]
-    pub endpoint: Option<String>,
-
-    /// R2/S3 bucket name (or SHAHA_R2_BUCKET env var)
-    #[arg(long, env = "SHAHA_R2_BUCKET")]
-    pub bucket: Option<String>,
-
-    /// R2/S3 access key ID (or SHAHA_R2_ACCESS_KEY_ID or AWS_ACCESS_KEY_ID env var)
-    #[arg(long, env = "SHAHA_R2_ACCESS_KEY_ID")]
-    pub access_key_id: Option<String>,
-
-    /// R2/S3 secret access key (or SHAHA_R2_SECRET_ACCESS_KEY or AWS_SECRET_ACCESS_KEY env var)
-    #[arg(long, env = "SHAHA_R2_SECRET_ACCESS_KEY")]
-    pub secret_access_key: Option<String>,
-
-    /// Path within bucket (defaults to database filename)
-    #[arg(long, env = "SHAHA_R2_PATH")]
-    pub r2_path: Option<String>,
-
-    /// R2/S3 region (default: "auto" for R2)
-    #[arg(long, env = "SHAHA_R2_REGION", default_value = "auto")]
-    pub region: String,
+    #[command(flatten)]
+    pub r2: super::R2Args,
 
     /// Maximum number of results to return
     #[arg(short, long)]
@@ -69,8 +43,8 @@ pub fn run(args: QueryArgs) -> Result<()> {
     let hash_bytes = hex::decode(&args.hash)
         .map_err(|_| anyhow::anyhow!("Invalid hex string: {}", args.hash))?;
 
-    let results = if args.r2 {
-        let r2_config = build_r2_config(&args)?;
+    let results = if args.r2.enabled {
+        let r2_config = args.r2.build_config(&args.database)?;
         let storage = R2Storage::new(r2_config)?;
         storage.query(&hash_bytes, args.algo.as_deref(), args.limit)?
     } else {
@@ -103,23 +77,6 @@ pub fn run(args: QueryArgs) -> Result<()> {
     Ok(())
 }
 
-fn build_r2_config(args: &QueryArgs) -> Result<R2Config> {
-    let default_path = args.database.file_name()
-        .map(|n| n.to_string_lossy().to_string())
-        .unwrap_or_else(|| "hashes.parquet".to_string());
-
-    let overrides = R2Overrides {
-        endpoint: args.endpoint.as_deref(),
-        bucket: args.bucket.as_deref(),
-        access_key_id: args.access_key_id.as_deref(),
-        secret_access_key: args.secret_access_key.as_deref(),
-        path: args.r2_path.as_deref(),
-        region: &args.region,
-        default_path: &default_path,
-    };
-
-    Config::load().unwrap_or_default().build_r2_config(overrides)
-}
 
 fn format_sources(sources: &[String]) -> String {
     if sources.is_empty() {
