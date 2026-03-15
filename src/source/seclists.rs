@@ -48,12 +48,14 @@ impl Source for SecListsSource {
         let file = File::open(&self.full_path)
             .with_context(|| format!("Failed to open: {:?}", self.full_path))?;
         let reader = BufReader::new(file);
-        Ok(Box::new(
-            reader
-                .lines()
-                .map_while(Result::ok)
-                .filter(|line| !line.is_empty()),
-        ))
+        let lines: Vec<String> = reader
+            .lines()
+            .collect::<std::io::Result<Vec<_>>>()
+            .with_context(|| format!("I/O error reading: {:?}", self.full_path))?
+            .into_iter()
+            .filter(|line| !line.is_empty())
+            .collect();
+        Ok(Box::new(lines.into_iter()))
     }
 
     fn content_hash(&self) -> Result<Option<String>> {

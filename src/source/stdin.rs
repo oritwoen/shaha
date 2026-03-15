@@ -25,12 +25,13 @@ impl Source for StdinSource {
 
     fn words(&self) -> Result<Box<dyn Iterator<Item = String>>> {
         let reader = BufReader::new(io::stdin());
-        Ok(Box::new(
-            reader
-                .lines()
-                .map_while(Result::ok)
-                .filter(|line| !line.is_empty()),
-        ))
+        let lines: Vec<String> = reader
+            .lines()
+            .collect::<io::Result<Vec<_>>>()?
+            .into_iter()
+            .filter(|line| !line.is_empty())
+            .collect();
+        Ok(Box::new(lines.into_iter()))
     }
 
     fn content_hash(&self) -> Result<Option<String>> {
