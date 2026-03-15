@@ -22,6 +22,12 @@ impl UrlSource {
 
         let response = reqwest::blocking::get(&url)
             .with_context(|| format!("Failed to fetch URL: {}", url))?;
+
+        let status = response.status();
+        if !status.is_success() {
+            anyhow::bail!("HTTP {} from {}", status, url);
+        }
+
         let content = response
             .text()
             .with_context(|| format!("Failed to read response from: {}", url))?;
