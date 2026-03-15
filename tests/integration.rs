@@ -519,7 +519,7 @@ fn test_url_source_fetch_error_connection_refused() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn test_url_source_http_500_succeeds() {
+async fn test_url_source_http_500_fails() {
     use wiremock::matchers::method;
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
@@ -531,11 +531,35 @@ async fn test_url_source_http_500_succeeds() {
         .await;
 
     let uri = mock_server.uri();
-    let source = tokio::task::spawn_blocking(move || UrlSource::new(&uri))
+    let result = tokio::task::spawn_blocking(move || UrlSource::new(&uri))
         .await
         .unwrap();
 
-    assert!(source.is_ok());
+    assert!(result.is_err());
+    let err = result.err().unwrap();
+    assert!(err.to_string().contains("HTTP 500"));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_url_source_http_404_fails() {
+    use wiremock::matchers::method;
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    let mock_server = MockServer::start().await;
+
+    Mock::given(method("GET"))
+        .respond_with(ResponseTemplate::new(404))
+        .mount(&mock_server)
+        .await;
+
+    let uri = mock_server.uri();
+    let result = tokio::task::spawn_blocking(move || UrlSource::new(&uri))
+        .await
+        .unwrap();
+
+    assert!(result.is_err());
+    let err = result.err().unwrap();
+    assert!(err.to_string().contains("HTTP 404"));
 }
 
 #[tokio::test(flavor = "multi_thread")]
