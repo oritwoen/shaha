@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use anyhow::{bail, Result};
+use anyhow::Result;
 use clap::{Args, ValueEnum};
 use comfy_table::{presets::UTF8_FULL, Table};
 
@@ -53,7 +53,8 @@ pub fn run(args: QueryArgs) -> Result<()> {
     };
 
     if results.is_empty() {
-        bail!("No matches found");
+        crate::status!("No matches found");
+        return Ok(());
     }
 
     match args.format {
