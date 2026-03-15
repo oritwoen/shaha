@@ -89,8 +89,11 @@ fn format_sources(sources: &[String]) -> String {
 fn print_plain(results: &[HashRecord]) {
     for r in results {
         println!(
-            "{} ({}, {})",
-            r.preimage, r.algorithm, format_sources(&r.sources)
+            "{}  {}  {} ({})",
+            hex::encode(&r.hash),
+            r.preimage,
+            r.algorithm,
+            format_sources(&r.sources)
         );
     }
 }
@@ -122,10 +125,11 @@ fn print_json(results: &[HashRecord]) -> Result<()> {
 fn print_table(results: &[HashRecord]) {
     let mut table = Table::new();
     table.load_preset(UTF8_FULL);
-    table.set_header(vec!["Preimage", "Algorithm", "Sources"]);
+    table.set_header(vec!["Hash", "Preimage", "Algorithm", "Sources"]);
 
     for r in results {
         table.add_row(vec![
+            hex::encode(&r.hash),
             r.preimage.clone(),
             r.algorithm.clone(),
             format_sources(&r.sources),
